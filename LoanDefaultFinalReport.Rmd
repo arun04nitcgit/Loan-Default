@@ -1,0 +1,166 @@
+---
+title: "LoanDefaultRMarkDownReport"
+author: "Arun"
+date: "May 22, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+This is an R Markdown document for loan default problem. The objective of this document is to describe the steps followed to analyze and build model for loan prediction dataset.
+
+## Required libraries
+```{r }
+library(h2o)
+library(readr)
+library(data.table)
+library(dplyr)
+library(caTools)
+library(recommenderlab)
+library(ggplot2)
+
+```
+
+## Set Working Directory and load the data set
+The below code segement load the train and test data set.
+
+
+```{r }
+# setwd("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx")
+loans.train <- fread("Loan Prediction train.csv")
+loans.test <- fread("Loan Prediction test.csv")
+```
+## Create Train and Test Sample
+Create a sample size from the train data set (75% Train, 25% Test)
+
+
+```{r}
+set.seed(123)
+smp_size <- floor(0.75 * nrow(loans.train))
+train_ind <- sample(seq_len(nrow(loans.train)), size = smp_size)
+train <- loans.train[train_ind, ]
+test <- loans.train[-train_ind, ]
+```
+## Remove Loan ID
+Loan ID is unique field record and could not contribute in predicting the loan default probability
+
+```{r}
+train <- subset( train, select = -c( Loan_ID ))
+test <- subset( test, select = -c( Loan_ID ))
+
+```
+## Exclude NA Data Sets
+The below Code segement removes the NA Data sets. 
+Other NA record handling methods
+na.continue
+na.fail
+na.omit
+
+```{r}
+train <- na.exclude(train)
+test <- na.exclude(test)
+list( dimension = dim(train), head = train )
+```
+## Create Factor for Categorial variables
+As.factor -> Create factor variable.
+
+```{r}
+train$Self_Employed <- as.factor(train$Self_Employed)
+train$Property_Area <- as.factor(train$Property_Area)
+train$Gender <- as.factor(train$Gender)
+train$Dependents <- as.factor(train$Dependents)
+train$Married <- as.factor(train$Married)
+train$Education <- as.factor(train$Education)
+train$Loan_Status <- as.factor(train$Loan_Status)
+```
+## Start the h2o 
+h2o : Deep Learning library
+h2o.init-> Initialize the h2o java instance
+IP -> IP Address of the Host
+port -> port number
+Xmx -> Max Heap Memory
+
+
+```{r}
+h2o.init(nthreads=-1)
+```
+## Create Data Frame
+Create data frame to get converted to h2o data table frame
+as.data.table -> Convert to table data frame
+as.h2o -> Convert to h2o data frame
+
+```{r}
+train <- as.data.table(train)
+dat_h2o <- as.h2o(train)
+head(train)
+```
+## Create the model using h2o deep learning library
+
+Brief overview of the parameters used:
+
+X and Y: List of the predictors and target variable respectively
+
+training_frame: H2O training frame data
+
+activation: Indicates which activation function to use
+
+hidden: Number of hidden layers and their size
+
+l1: L1 regularization
+
+train_samples_per_iteration: Number of training samples per iteration
+
+classification_stop: Stopping criterion for classification error
+
+epochs: How many times the dataset should be iterated
+
+overwrite_with_best_model: If TRUE, overrides the final model with the best model
+
+standardize: If TRUE, auto standardize the data
+
+distribution: The distribution function of the response. It can be AUTO
+
+missing_values_handling: Ways to handle missing values
+
+stopping_metric: The stopping metric criterion
+
+nfold: Specifying the number of folds for N Fold cross validation
+
+```{r}
+model <- h2o.deeplearning(x = 1:11,
+                          y = 12,
+                          training_frame = dat_h2o,
+                          activation = "RectifierWithDropout",
+                          hidden = c(500,1000),
+                          input_dropout_ratio = 0.2,
+                          l1 = 1.0e-5,
+                          train_samples_per_iteration = -1,
+                          classification_stop = -1,
+                          epochs = 100,
+                          overwrite_with_best_model = TRUE,
+                          standardize = TRUE,
+                          distribution = "AUTO",
+                          #c("AUTO", "gaussian", "bernaulli", 
+                                         #  "multinomial", "poisson", "quantile"),
+                          missing_values_handling = "MeanImputation",
+                            #c("MeanImputation", "Skip"),
+                          stopping_metric = "AUTO",
+                            # c("AUTO", "logloss", "MSE"),
+                          
+                          nfolds = 5
+                          
+                          )
+```
+
+## Create Confusion Matrix
+Create Confusion Matrix Based on test data frame
+
+```{r}
+test <- as.data.table(test)
+dat_h2o_test <- as.h2o(test)
+h2o.confusionMatrix(model,dat_h2o_test)
+```
+
